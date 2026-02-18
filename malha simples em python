@@ -1,0 +1,126 @@
+import math
+import pygame
+
+# Window settings
+WIDTH, HEIGHT = 1100, 700
+FPS = 60
+
+# Mesh settings
+SPACING = 26
+COLS = WIDTH // SPACING + 3
+ROWS = HEIGHT // SPACING + 3
+
+# Neon colors
+BG_COLOR = (6, 8, 18)
+NEON_CORE = (120, 255, 220)
+NEON_MID = (70, 210, 255)
+NEON_GLOW = (30, 120, 170)
+
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Fluorescent Mesh")
+clock = pygame.time.Clock()
+
+# Surfaces for additive glow
+line_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+glow_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+
+# Create base mesh points
+points = []
+for r in range(ROWS):
+    row = []
+    for c in range(COLS):
+        x = c * SPACING - SPACING
+        y = r * SPACING - SPACING
+        row.append((x, y))
+    points.append(row)
+
+
+def displaced_point(base_x, base_y, mouse_pos, t):
+    mx, my = mouse_pos
+
+    # Vector from point to mouse
+    dx = mx - base_x
+    dy = my - base_y
+    dist = math.hypot(dx, dy) + 1e-6
+
+    # Mouse influence with smooth falloff
+    radius = 220.0
+    influence = math.exp(-(dist * dist) / (2.0 * radius * radius))
+
+    # Attraction + tangential swirl for fluid feel
+    nx, ny = dx / dist, dy / dist
+    tx, ty = -ny, nx
+
+    # Organic wave motion
+    phase = 0.027 * base_x + 0.021 * base_y + t * 2.4
+    wave = math.sin(phase) * 0.55 + math.sin(phase * 0.6 + t * 1.3) * 0.45
+
+    pull_strength = 52.0 * influence
+    swirl_strength = 19.0 * influence * math.sin(t * 2.0 + dist * 0.028)
+
+    ox = nx * pull_strength + tx * swirl_strength + wave * 4.2
+    oy = ny * pull_strength + ty * swirl_strength + wave * 4.2
+
+    # Small damping for visual stability
+    damping = 0.9
+    return base_x + ox * damping, base_y + oy * damping
+
+
+def draw_glow_line(surface, p1, p2):
+    # Layered lines to simulate fluorescent LED glow
+    pygame.draw.line(surface, (*NEON_GLOW, 34), p1, p2, 8)
+    pygame.draw.line(surface, (*NEON_MID, 85), p1, p2, 4)
+    pygame.draw.line(surface, (*NEON_CORE, 205), p1, p2, 2)
+
+
+running = True
+while running:
+    clock.tick(FPS)
+    t = pygame.time.get_ticks() / 1000.0
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+    mouse = pygame.mouse.get_pos()
+
+    screen.fill(BG_COLOR)
+    line_surface.fill((0, 0, 0, 0))
+    glow_surface.fill((0, 0, 0, 0))
+
+    # Compute displaced mesh
+    displaced = []
+    for r in range(ROWS):
+        row = []
+        for c in range(COLS):
+            bx, by = points[r][c]
+            row.append(displaced_point(bx, by, mouse, t))
+        displaced.append(row)
+
+    # Draw horizontal and vertical mesh lines
+    for r in range(ROWS):
+        for c in range(COLS):
+            p = displaced[r][c]
+            if c + 1 < COLS:
+                q = displaced[r][c + 1]
+                draw_glow_line(glow_surface, p, q)
+                pygame.draw.line(line_surface, (*NEON_CORE, 180), p, q, 1)
+            if r + 1 < ROWS:
+                q = displaced[r + 1][c]
+                draw_glow_line(glow_surface, p, q)
+                pygame.draw.line(line_surface, (*NEON_CORE, 180), p, q, 1)
+
+    # Additive composition for stronger neon effect
+    screen.blit(glow_surface, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+    screen.blit(line_surface, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+
+    # Subtle rings around mouse for extra energy
+    for i in range(3):
+        radius = int(70 + i * 34 + 8 * math.sin(t * 2 + i))
+        alpha = max(0, 70 - i * 20)
+        pygame.draw.circle(screen, (60, 180, 200, alpha), mouse, radius, 2)
+
+    pygame.display.flip()
+
+pygame.quit()
